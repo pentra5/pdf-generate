@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const puppeteer = require("puppeteer-core");
+const fs = require("fs");
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -9,13 +10,19 @@ const PORT = process.env.PORT || 8080;
 app.use(cors());
 app.use(bodyParser.json({ limit: "50mb" }));
 
-app.get("/", (req, res) => {
-  res.json({
-    status: "OK",
-    message: "Chrome PDF Service Running",
-    chromePath: process.env.PUPPETEER_EXECUTABLE_PATH
-  });
-});
+async function findChrome() {
+  const paths = [
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable"
+  ];
+
+  for (const p of paths) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
 
 app.post("/convert", async (req, res) => {
   const { html, filename = "file.pdf" } = req.body;
@@ -27,9 +34,14 @@ app.post("/convert", async (req, res) => {
   let browser;
 
   try {
-    const chromePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    const chromePath =
+      process.env.PUPPETEER_EXECUTABLE_PATH || (await findChrome());
 
-    console.log("Launching Chromium at:", chromePath);
+    console.log(">> Chrome Detected:", chromePath);
+
+    if (!chromePath) {
+      throw new Error("Chrome executable NOT FOUND in container");
+    }
 
     browser = await puppeteer.launch({
       executablePath: chromePath,
@@ -40,26 +52,40 @@ app.post("/convert", async (req, res) => {
         "--disable-dev-shm-usage",
         "--disable-gpu",
         "--disable-software-rasterizer",
+        "--allow-file-access",
+        "--allow-file-access-from-files",
+        "--disable-web-security",
         "--single-process",
-        "--no-zygote",
-        "--disable-dev-shm-usage"
+        "--no-zygote"
       ]
     });
 
     const page = await browser.newPage();
 
-    await page.setContent(html, { waitUntil: "networkidle0", timeout: 60000 });
+    console.log(">> Setting HTML content...");
+    await page.setContent(html, {
+      waitUntil: "networkidle0",
+      timeout: 60000
+    });
+
+    console.log(">> Creating PDF...");
 
     const pdf = await page.pdf({
       format: "A4",
       printBackground: true
     });
 
+    console.log(">> PDF Generated. Size:", pdf.length, "bytes");
+
+    // DEBUG MODE: write to container
+    fs.writeFileSync("/tmp/test.pdf", pdf);
+    console.log(">> PDF saved to /tmp/test.pdf");
+
     await browser.close();
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    res.send(pdf);
+    return res.send(pdf);
 
   } catch (err) {
     console.error("❌ PDF ERROR:", err);
@@ -75,5 +101,4 @@ app.post("/convert", async (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`🚀 PDF Service running on port ${PORT}`);
-  console.log("Chromium Path:", process.env.PUPPETEER_EXECUTABLE_PATH);
 });
