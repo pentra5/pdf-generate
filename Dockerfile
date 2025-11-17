@@ -1,25 +1,21 @@
-FROM ghcr.io/puppeteer/puppeteer:latest
+FROM ghcr.io/puppeteer/puppeteer:23.4.0
 
-# Set working directory
+# Working directory
 WORKDIR /usr/src/app
 
-# Skip Chromium download (using bundled version)
+# Puppeteer config (Chromium already included)
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH="/usr/bin/chromium-browser"
 
-# Copy package files
+# Install deps
 COPY package*.json ./
+RUN npm ci --omit=dev
 
-# Install dependencies
-RUN npm ci --only=production
-
-# Copy app
+# Copy app code
 COPY . .
 
-# Expose port
-EXPOSE 3000
-
-# Run as non-root user
+# Use non-root puppeteer user
 USER pptruser
 
-# Start app
+EXPOSE 3000
 CMD ["node", "index.js"]

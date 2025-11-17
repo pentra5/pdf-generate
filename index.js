@@ -6,98 +6,79 @@ const cors = require('cors');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
+// Middlewares
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
 // Health check
 app.get('/', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    message: 'Puppeteer PDF Service is running!',
-    endpoints: {
-      health: 'GET /',
-      convert: 'POST /convert'
-    }
+  res.json({
+    status: "OK",
+    message: "Puppeteer PDF Service Running",
+    chromePath: process.env.PUPPETEER_EXECUTABLE_PATH
   });
 });
 
-// Convert HTML to PDF
 app.post('/convert', async (req, res) => {
+  const { html, filename = "document.pdf", options = {} } = req.body;
+
+  if (!html) {
+    return res.status(400).json({ error: "HTML content is required" });
+  }
+
   let browser;
-  
+
   try {
-    const { html, filename = 'document.pdf', options = {} } = req.body;
-    
-    if (!html) {
-      return res.status(400).json({ error: 'HTML content is required' });
-    }
-    
-    console.log('Starting PDF conversion...');
-    
-    // Launch browser - FIX INI!
+    console.log("Launching Chromium:", process.env.PUPPETEER_EXECUTABLE_PATH);
+
     browser = await puppeteer.launch({
-      headless: 'new',
+      headless: "new",
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
       args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-extensions'
-      ],
-      // TAMBAH INI: Auto-detect Chrome path
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || 
-                      puppeteer.executablePath()
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu"
+      ]
     });
-    
+
     const page = await browser.newPage();
-    
+
     await page.setContent(html, {
-      waitUntil: ['load', 'networkidle0'],
-      timeout: 30000
+      waitUntil: "networkidle0",
+      timeout: 60000,
     });
-    
-    const pdfOptions = {
-      format: options.format || 'A4',
-      printBackground: options.printBackground !== false,
+
+    const pdfBuffer = await page.pdf({
+      format: options.format || "A4",
+      printBackground: true,
       margin: options.margin || {
-        top: '0mm',
-        right: '0mm',
-        bottom: '0mm',
-        left: '0mm'
-      },
-      preferCSSPageSize: true
-    };
-    
-    const pdfBuffer = await page.pdf(pdfOptions);
-    
+        top: "10mm",
+        right: "10mm",
+        bottom: "10mm",
+        left: "10mm"
+      }
+    });
+
     await browser.close();
-    
-    console.log('PDF generated successfully');
-    
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.setHeader('Content-Length', pdfBuffer.length);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.send(pdfBuffer);
-    
+
   } catch (error) {
-    console.error('Error generating PDF:', error);
-    
-    if (browser) {
-      await browser.close();
-    }
-    
-    res.status(500).json({ 
-      error: 'Failed to generate PDF',
-      message: error.message 
+    console.error("❌ Error generating PDF:", error);
+
+    if (browser) await browser.close();
+
+    res.status(500).json({
+      error: "Failed to generate PDF",
+      detail: error.message
     });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Puppeteer PDF Service running on port ${PORT}`);
+  console.log(`🚀 PDF generator running on port ${PORT}`);
 });
