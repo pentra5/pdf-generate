@@ -13,7 +13,7 @@ app.get("/", (req, res) => {
   res.json({
     status: "OK",
     message: "Chrome PDF Service Running",
-    chromePath: "/usr/bin/google-chrome"
+    chromePath: process.env.PUPPETEER_EXECUTABLE_PATH || "NOT SET"
   });
 });
 
@@ -27,21 +27,24 @@ app.post("/convert", async (req, res) => {
   let browser;
 
   try {
-    console.log("Launching Chrome at /usr/bin/google-chrome");
+    const chromePath = process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium";
+    console.log("Launching Chromium at:", chromePath);
 
     browser = await puppeteer.launch({
-      executablePath: "/usr/bin/google-chrome",
+      executablePath: chromePath,
       headless: "new",
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
         "--disable-dev-shm-usage",
         "--disable-gpu",
-        "--disable-software-rasterizer"
+        "--disable-software-rasterizer",
+        "--single-process"
       ]
     });
 
     const page = await browser.newPage();
+
     await page.setContent(html, {
       waitUntil: "networkidle0",
       timeout: 60000
@@ -55,11 +58,15 @@ app.post("/convert", async (req, res) => {
     await browser.close();
 
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${filename}"`
+    );
+
     return res.send(pdf);
 
   } catch (err) {
-    console.error("PDF ERROR:", err.message);
+    console.error("❌ PDF ERROR:", err);
 
     if (browser) await browser.close();
 
@@ -70,6 +77,7 @@ app.post("/convert", async (req, res) => {
   }
 });
 
-app.listen(PORT, () =>
-  console.log(`🚀 PDF Service running on port ${PORT}`)
-);
+app.listen(PORT, () => {
+  console.log(`🚀 PDF Service running on port ${PORT}`);
+  console.log("Chromium Path:", process.env.PUPPETEER_EXECUTABLE_PATH);
+});

@@ -1,24 +1,40 @@
-# Base image resmi Puppeteer + Node.js 20 + Chromium
-FROM ghcr.io/puppeteer/puppeteer:latest-node20
+FROM node:20-slim
 
-# Working directory
-WORKDIR /usr/src/app
+# Install Chromium dependencies
+RUN apt-get update && apt-get install -y \
+    chromium \
+    ca-certificates \
+    fonts-liberation \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxkbcommon0 \
+    libnss3 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    libpangocairo-1.0-0 \
+    libpango-1.0-0 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libatspi2.0-0 \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
 
-# Env variable agar puppeteer pakai chromium dari base image
+# Set Puppeteer to use OS Chromium
 ENV PUPPETEER_SKIP_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome
+ENV PUPPETEER_EXECUTABLE_PATH="/usr/bin/chromium"
 
-# Copy package.json & lock
+WORKDIR /app
+
 COPY package*.json ./
+RUN npm install --omit=dev
 
-# Install dependencies
-RUN npm ci --omit=dev
-
-# Copy seluruh project
 COPY . .
 
-# Expose app port
 EXPOSE 3000
 
-# Start
 CMD ["node", "index.js"]
