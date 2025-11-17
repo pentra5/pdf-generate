@@ -11,7 +11,7 @@ app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 
-// Health check endpoint
+// Health check
 app.get('/', (req, res) => {
   res.json({ 
     status: 'OK', 
@@ -23,7 +23,7 @@ app.get('/', (req, res) => {
   });
 });
 
-// Convert HTML to PDF endpoint
+// Convert HTML to PDF
 app.post('/convert', async (req, res) => {
   let browser;
   
@@ -36,7 +36,7 @@ app.post('/convert', async (req, res) => {
     
     console.log('Starting PDF conversion...');
     
-    // Launch browser
+    // Launch browser - FIX INI!
     browser = await puppeteer.launch({
       headless: 'new',
       args: [
@@ -46,19 +46,21 @@ app.post('/convert', async (req, res) => {
         '--disable-gpu',
         '--no-first-run',
         '--no-zygote',
-        '--single-process'
-      ]
+        '--single-process',
+        '--disable-extensions'
+      ],
+      // TAMBAH INI: Auto-detect Chrome path
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || 
+                      puppeteer.executablePath()
     });
     
     const page = await browser.newPage();
     
-    // Set content
     await page.setContent(html, {
       waitUntil: ['load', 'networkidle0'],
       timeout: 30000
     });
     
-    // PDF options
     const pdfOptions = {
       format: options.format || 'A4',
       printBackground: options.printBackground !== false,
@@ -71,14 +73,12 @@ app.post('/convert', async (req, res) => {
       preferCSSPageSize: true
     };
     
-    // Generate PDF
     const pdfBuffer = await page.pdf(pdfOptions);
     
     await browser.close();
     
     console.log('PDF generated successfully');
     
-    // Send PDF as response
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('Content-Length', pdfBuffer.length);
@@ -98,7 +98,6 @@ app.post('/convert', async (req, res) => {
   }
 });
 
-// Start server
 app.listen(PORT, () => {
   console.log(`🚀 Puppeteer PDF Service running on port ${PORT}`);
 });
