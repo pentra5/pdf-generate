@@ -7,23 +7,40 @@ const fs = require("fs");
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+// Middleware
 app.use(cors());
 app.use(bodyParser.json({ limit: "50mb" }));
 
-async function findChrome() {
+// ======== FIND CHROME / CHROMIUM AUTO ========
+function findChrome() {
   const paths = [
     "/usr/bin/chromium",
     "/usr/bin/chromium-browser",
     "/usr/bin/google-chrome",
-    "/usr/bin/google-chrome-stable"
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chrome"
   ];
 
   for (const p of paths) {
-    if (fs.existsSync(p)) return p;
+    if (fs.existsSync(p)) {
+      console.log(">> Chrome Detected:", p);
+      return p;
+    }
   }
-  return null;
+
+  throw new Error("Chromium / Chrome not found in container");
 }
 
+// ======== ROOT ENDPOINT ========
+app.get("/", (req, res) => {
+  res.json({
+    status: "OK",
+    message: "PDF Generator Service Running",
+    chromePath: "auto"
+  });
+});
+
+// ======== PDF CONVERTER ========
 app.post("/convert", async (req, res) => {
   const { html, filename = "file.pdf" } = req.body;
 
@@ -34,14 +51,8 @@ app.post("/convert", async (req, res) => {
   let browser;
 
   try {
-    const chromePath =
-      process.env.PUPPETEER_EXECUTABLE_PATH || (await findChrome());
-
-    console.log(">> Chrome Detected:", chromePath);
-
-    if (!chromePath) {
-      throw new Error("Chrome executable NOT FOUND in container");
-    }
+    // Find Chrome in container
+    const chromePath = findChrome();
 
     browser = await puppeteer.launch({
       executablePath: chromePath,
@@ -49,14 +60,11 @@ app.post("/convert", async (req, res) => {
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
+        "--disable-web-security",
         "--disable-dev-shm-usage",
         "--disable-gpu",
-        "--disable-software-rasterizer",
-        "--allow-file-access",
-        "--allow-file-access-from-files",
-        "--disable-web-security",
-        "--single-process",
-        "--no-zygote"
+        "--no-zygote",
+        "--single-process"
       ]
     });
 
@@ -69,36 +77,37 @@ app.post("/convert", async (req, res) => {
     });
 
     console.log(">> Creating PDF...");
-
-    const pdf = await page.pdf({
+    const pdfBuffer = await page.pdf({
       format: "A4",
-      printBackground: true
+      printBackground: true,
+      preferCSSPageSize: true,
     });
 
-    console.log(">> PDF Generated. Size:", pdf.length, "bytes");
-
-    // DEBUG MODE: write to container
-    fs.writeFileSync("/tmp/test.pdf", pdf);
-    console.log(">> PDF saved to /tmp/test.pdf");
+    console.log(">> PDF Generated. Size:", pdfBuffer.length);
 
     await browser.close();
 
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    return res.send(pdf);
+    // FIX UTAMA — pastikan binary mode
+    res.writeHead(200, {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Length": pdfBuffer.length,
+    });
+
+    return res.end(pdfBuffer, "binary");
 
   } catch (err) {
-    console.error("❌ PDF ERROR:", err);
-
     if (browser) await browser.close();
+    console.error("PDF ERROR:", err.message);
 
     return res.status(500).json({
       error: "Failed to generate PDF",
-      detail: err.message
+      detail: err.message,
     });
   }
 });
 
+// ======== START SERVER ========
 app.listen(PORT, () => {
   console.log(`🚀 PDF Service running on port ${PORT}`);
 });
