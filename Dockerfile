@@ -1,24 +1,24 @@
-FROM ghcr.io/puppeteer/puppeteer:23.4.0
+# Gunakan image resmi Puppeteer yang sudah include Node.js 20 + Chromium
+FROM ghcr.io/puppeteer/puppeteer:23.4.0-node20
 
-# Install Node.js 20 (WAJIB)
-RUN apt-get update && \
-    apt-get install -y curl && \
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y nodejs && \
-    node -v && npm -v
-
+# Set working directory
 WORKDIR /usr/src/app
 
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
-
+# Copy file package.json & package-lock.json
 COPY package*.json ./
+
+# Install dependency tanpa devDependencies
 RUN npm ci --omit=dev
 
+# Copy semua source code
 COPY . .
 
+# Environment biar pupppeteer pakai chromium yang sudah ada di base image
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome
+
+# Expose port (opsional, tergantung aplikasinya)
 EXPOSE 3000
 
-USER pptruser
-
+# Jalankan aplikasi
 CMD ["node", "index.js"]
